@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../AsyncLockCore.targets" />
+  <ItemGroup>
+    <PackageReference Include="MSTest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AsyncLockCore\AsyncLockCore.csproj" />
+  </ItemGroup>
+</Project>
