@@ -1,5 +1,4 @@
-﻿using System;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
 
 using BenchmarkDotNet.Attributes;
@@ -11,8 +10,8 @@ public class AsyncLockBenchmarks
 {
     private readonly AsyncReaderWriterLock _readWriterLock = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private readonly Action<AsyncReaderWriterLock.Scope> _disposeScope = scope => scope.Dispose();
-    private readonly Action<SemaphoreSlim> _releaseSemaphore = semaphore => semaphore.Release();
+    private readonly WaitCallback _disposeScope = state => ((AsyncReaderWriterLock.Scope)state!).Dispose();
+    private readonly WaitCallback _releaseSemaphore = state => ((SemaphoreSlim)state!).Release();
 
     [Benchmark]
     public async Task AsyncReadWriterLock_Read()
@@ -67,7 +66,7 @@ public class AsyncLockBenchmarks
     {
         var writeScope = await _readWriterLock.Write().ConfigureAwait(false);
         var readTask = _readWriterLock.Read();
-        ThreadPool.QueueUserWorkItem(_disposeScope, writeScope, true);
+        ThreadPool.QueueUserWorkItem(_disposeScope, writeScope);
         using var scope = await readTask.ConfigureAwait(false);
     }
 
@@ -76,7 +75,7 @@ public class AsyncLockBenchmarks
     {
         var readScope = await _readWriterLock.Read().ConfigureAwait(false);
         var writeTask = _readWriterLock.Write();
-        ThreadPool.QueueUserWorkItem(_disposeScope, readScope, true);
+        ThreadPool.QueueUserWorkItem(_disposeScope, readScope);
         using var scope = await writeTask.ConfigureAwait(false);
     }
 
@@ -85,7 +84,7 @@ public class AsyncLockBenchmarks
     {
         await _semaphore.WaitAsync().ConfigureAwait(false);
         var lockTask = _semaphore.WaitAsync();
-        ThreadPool.QueueUserWorkItem(_releaseSemaphore, _semaphore, true);
+        ThreadPool.QueueUserWorkItem(_releaseSemaphore, _semaphore);
         await lockTask.ConfigureAwait(false);
         _semaphore.Release();
     }

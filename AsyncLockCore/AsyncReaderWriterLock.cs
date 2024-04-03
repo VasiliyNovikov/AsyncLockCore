@@ -45,9 +45,9 @@ public class AsyncReaderWriterLock
     private ValueTask<Scope> Enter(bool isWrite, CancellationToken cancellationToken)
     {
         return cancellationToken.IsCancellationRequested
-            ? ValueTask.FromCanceled<Scope>(cancellationToken)
+            ? new ValueTask<Scope>(Task.FromCanceled<Scope>(cancellationToken))
             : TryEnter(isWrite, cancellationToken, out var scope)
-                ? ValueTask.FromResult(scope)
+                ? new ValueTask<Scope>(scope)
                 : new ValueTask<Scope>(scope, 0);
     }
 
@@ -271,7 +271,7 @@ public class AsyncReaderWriterLock
     private static Scope QueueRemoveFirst(ref Scope? first, ref Scope? last)
     {
         Debug.Assert(first is not null);
-        var scope = first;
+        var scope = first!;
         first = scope.Next;
         if (first is null)
             last = null;
