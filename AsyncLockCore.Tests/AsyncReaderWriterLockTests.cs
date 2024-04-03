@@ -32,7 +32,6 @@ public class AsyncReaderWriterLockTests
 
         // Second write should wait
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => write2);
-        Assert.IsFalse(write2.IsCompletedSuccessfully);
         Assert.IsTrue(write2.IsCanceled);
     }
 
@@ -50,7 +49,6 @@ public class AsyncReaderWriterLockTests
 
         // Read should wait
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => read);
-        Assert.IsFalse(read.IsCompletedSuccessfully);
         Assert.IsTrue(read.IsCanceled);
     }
 
@@ -67,7 +65,6 @@ public class AsyncReaderWriterLockTests
 
         // Write should wait
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => write);
-        Assert.IsFalse(write.IsCompletedSuccessfully);
         Assert.IsTrue(write.IsCanceled);
     }
 
