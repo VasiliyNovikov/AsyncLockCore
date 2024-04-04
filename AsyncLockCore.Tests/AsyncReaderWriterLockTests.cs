@@ -14,8 +14,8 @@ public class AsyncReaderWriterLockTests
     public async Task Async_Lock_Read_Allows_Multiple_Concurrent_Readers()
     {
         var lockObj = new AsyncReaderWriterLock();
-        using var readScope1 = await lockObj.Read(); // Ensure first read lock is acquired
-        using var readScope2 = await lockObj.Read(); // Ensure second read lock is acquired
+        using var readGuard1 = await lockObj.Read(); // Ensure first read lock is acquired
+        using var readGuard2 = await lockObj.Read(); // Ensure second read lock is acquired
     }
 
     [TestMethod]
@@ -28,7 +28,7 @@ public class AsyncReaderWriterLockTests
         var write1 = lockObj.Write(cancellation.Token).AsTask();
         var write2 = lockObj.Write(cancellation.Token).AsTask();
 
-        using var writeScope1 = await write1; // Ensure first write lock is acquired
+        using var writeGuard1 = await write1; // Ensure first write lock is acquired
 
         // Second write should wait
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => write2);
@@ -45,7 +45,7 @@ public class AsyncReaderWriterLockTests
         var write = lockObj.Write(cancellation.Token).AsTask();
         var read = lockObj.Read(cancellation.Token).AsTask();
 
-        using var writeScope = await write; // Ensure write lock is acquired
+        using var writeGuard = await write; // Ensure write lock is acquired
 
         // Read should wait
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => read);
@@ -61,7 +61,7 @@ public class AsyncReaderWriterLockTests
         var read = lockObj.Read(cancellation.Token).AsTask();
         var write = lockObj.Write(cancellation.Token).AsTask();
 
-        using var readScope = await read; // Ensure read lock is acquired
+        using var readGuard = await read; // Ensure read lock is acquired
 
         // Write should wait
         await Assert.ThrowsExceptionAsync<TaskCanceledException>(() => write);
@@ -73,7 +73,7 @@ public class AsyncReaderWriterLockTests
     {
         var lockObj = new AsyncReaderWriterLock();
 
-        var write1Scope = await lockObj.Write();
+        var write1Guard = await lockObj.Write();
 
         var read1 = lockObj.Read().AsTask();
         var read2 = lockObj.Read().AsTask();
@@ -83,11 +83,11 @@ public class AsyncReaderWriterLockTests
         Assert.IsFalse(read1.IsCompleted);
         Assert.IsFalse(read2.IsCompleted);
 
-        write1Scope.Dispose();
+        write1Guard.Dispose();
 
-        using var read1Scope = await read1;
-        using var read2Scope = await read2;
-        using var read3Scope = await lockObj.Read(CancellationToken.None);
+        using var read1Guard = await read1;
+        using var read2Guard = await read2;
+        using var read3Guard = await lockObj.Read(CancellationToken.None);
     }
 
     [TestMethod]
@@ -123,6 +123,6 @@ public class AsyncReaderWriterLockTests
             Assert.IsFalse(read3.IsCompleted);
         }
 
-        using var read3Scope = await read3;
+        using var read3Guard = await read3;
     }
 }
