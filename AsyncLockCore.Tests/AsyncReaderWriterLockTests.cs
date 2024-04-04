@@ -154,13 +154,14 @@ public class AsyncReaderWriterLockTests
 
         async Task Writer()
         {
+            var rnd = new Random();
             for (var i = 0; i < 100; ++i)
             {
                 await Task.Yield();
                 using (await lockObj.Write())
                 {
                     list.Add(counter);
-                    await Task.Delay(Random.Shared.Next(5));
+                    await Task.Delay(rnd.Next(5));
                     ++counter;
                 }
             }
@@ -168,6 +169,7 @@ public class AsyncReaderWriterLockTests
 
         async Task Reader()
         {
+            var rnd = new Random();
             for (var i = 0; i < 100; ++i)
             {
                 await Task.Yield();
@@ -175,7 +177,7 @@ public class AsyncReaderWriterLockTests
                 {
                     var value = counter;
                     var count = list.Count;
-                    await Task.Delay(Random.Shared.Next(5));
+                    await Task.Delay(rnd.Next(5));
                     Assert.AreEqual(value, counter);
                     Assert.AreEqual(count, list.Count);
                 }
