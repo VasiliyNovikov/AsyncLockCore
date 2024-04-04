@@ -7,36 +7,37 @@ using System.Threading.Tasks.Sources;
 
 namespace AsyncLockCore;
 
-public class AsyncReaderWriterLock
+public sealed class AsyncReaderWriterLock
 {
-    private SpinLock _lock = new(false);
+    private static readonly WaitCallback TryCancelDelegate = state =>
+    {
+        var guard = (Guard)state!;
+        guard.Owner.TryCancel(guard);
+    };
 
-    private readonly Action<object?> _cancellationCallback;
-    private readonly SendOrPostCallback _syncEnterCallback;
-    private readonly ContextCallback _execEnterCallback;
-    private readonly SendOrPostCallback _syncAndExecEnterCallback;
+    private static readonly Action<object?> CancellationCallback = state => ThreadPool.QueueUserWorkItem(TryCancelDelegate, state);
+
+    private static readonly SendOrPostCallback SyncEnterCallback = state =>
+    {
+        var guard = (Guard)state!;
+        guard.EnterContinuation!(guard.EnterContinuationState);
+    };
+
+    private static readonly ContextCallback ExecEnterCallback = state =>
+    {
+        var guard = (Guard)state!;
+        guard.EnterContinuation!(guard.EnterContinuationState);
+    };
+
+    private static readonly SendOrPostCallback SyncAndExecEnterCallback = state => ExecutionContext.Run(((Guard)state!).EnterContinuationExecutionContext!, ExecEnterCallback, state);
+
+    private SpinLock _lock = new(false);
 
     private Guard? _incomingQueueFirst;
     private Guard? _incomingQueueLast;
     private Guard? _inProgressQueueFirst;
     private Guard? _inProgressQueueLast;
     private Guard? _freeStackHead;
-
-    public AsyncReaderWriterLock()
-    {
-        _cancellationCallback = state => TryCancel((Guard)state!);
-        _syncEnterCallback = state =>
-        {
-            var guard = (Guard)state!;
-            guard.EnterContinuation!(guard.EnterContinuationState);
-        };
-        _execEnterCallback = state =>
-        {
-            var guard = (Guard)state!;
-            guard.EnterContinuation!(guard.EnterContinuationState);
-        };
-        _syncAndExecEnterCallback = state => ExecutionContext.Run(((Guard)state!).EnterContinuationExecutionContext!, _execEnterCallback, state);
-    }
 
     public ValueTask<Guard> Read(CancellationToken cancellationToken = default) => Enter(false, cancellationToken);
     public ValueTask<Guard> Write(CancellationToken cancellationToken = default) => Enter(true, cancellationToken);
@@ -67,7 +68,7 @@ public class AsyncReaderWriterLock
 
             guard.Status = isEntered ? ValueTaskSourceStatus.Succeeded : ValueTaskSourceStatus.Pending;
             guard.CanBeCanceled = canBeCanceled;
-            guard.CancellationRegistration = canBeCanceled ? cancellationToken.Register(_cancellationCallback, guard) : default;
+            guard.CancellationRegistration = canBeCanceled ? cancellationToken.Register(CancellationCallback, guard) : default;
 
             if (isEntered)
                 QueueAddLast(ref _inProgressQueueFirst, ref _inProgressQueueLast, guard);
@@ -202,7 +203,7 @@ public class AsyncReaderWriterLock
         if (guard.CanBeCanceled)
             guard.CancellationRegistration.Dispose();
 
-        // It is safe do it otuside of the lock since Status is already "Succeeded" and continuation-related fields can't be modified
+        // It is safe do it outside of the lock since Status is already "Succeeded" and continuation-related fields can't be modified
         InvokeEnterContinuation(guard);
 
         return result;
@@ -217,7 +218,7 @@ public class AsyncReaderWriterLock
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void InvokeEnterContinuation(Guard guard)
+    private static void InvokeEnterContinuation(Guard guard)
     {
         if (guard.EnterContinuation is null)
             return;
@@ -226,11 +227,11 @@ public class AsyncReaderWriterLock
         var execContext = guard.EnterContinuationExecutionContext;
         if (syncContext is not null && syncContext != SynchronizationContext.Current)
         {
-            var callback = execContext is null ? _syncEnterCallback : _syncAndExecEnterCallback;
+            var callback = execContext is null ? SyncEnterCallback : SyncAndExecEnterCallback;
             syncContext.Post(callback, guard);
         }
         else if (execContext is not null)
-            ExecutionContext.Run(execContext, _execEnterCallback, guard);
+            ExecutionContext.Run(execContext, ExecEnterCallback, guard);
         else
             guard.EnterContinuation!(guard.EnterContinuationState);
     }
@@ -313,7 +314,7 @@ public class AsyncReaderWriterLock
 
     public sealed class Guard : IDisposable, IValueTaskSource<Guard>
     {
-        private readonly AsyncReaderWriterLock _owner;
+        internal readonly AsyncReaderWriterLock Owner;
 
         internal Guard? Next;
         internal Guard? Previous;
@@ -327,9 +328,9 @@ public class AsyncReaderWriterLock
         internal SynchronizationContext? EnterContinuationSynchronizationContext;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Guard(AsyncReaderWriterLock owner) => _owner = owner;
+        internal Guard(AsyncReaderWriterLock owner) => Owner = owner;
 
-        public void Dispose() => _owner.Exit(this);
+        public void Dispose() => Owner.Exit(this);
 
         Guard IValueTaskSource<Guard>.GetResult(short token)
         {
@@ -343,6 +344,6 @@ public class AsyncReaderWriterLock
 
         ValueTaskSourceStatus IValueTaskSource<Guard>.GetStatus(short token) => Status;
 
-        void IValueTaskSource<Guard>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _owner.AttachOnCompleted(this, continuation, state, flags);
+        void IValueTaskSource<Guard>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => Owner.AttachOnCompleted(this, continuation, state, flags);
     }
 }
