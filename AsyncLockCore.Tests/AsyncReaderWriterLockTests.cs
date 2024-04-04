@@ -1,4 +1,6 @@
-﻿using System.Threading;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -124,5 +126,62 @@ public class AsyncReaderWriterLockTests
         }
 
         using var read3Guard = await read3;
+    }
+
+    [TestMethod]
+    public async Task Async_Lock_Parallel_Read_Write()
+    {
+        var lockObj = new AsyncReaderWriterLock();
+        
+        var counter = 0;
+        var list = new List<int>();
+        
+        var parallelOperationCount = Environment.ProcessorCount * 2;
+        
+        var tasks = new List<Task>();
+        for (var i = 0; i < parallelOperationCount; ++i)
+        {
+            tasks.Add(Writer());
+            tasks.Add(Reader());
+        }
+        
+        await Task.WhenAll(tasks);
+
+        for (var i = 0; i < list.Count - 1; ++i)
+            Assert.AreEqual(list[i] + 1, list[i + 1]);
+
+        return;
+
+        async Task Writer()
+        {
+            var rnd = new Random();
+            for (var i = 0; i < 100; ++i)
+            {
+                await Task.Yield();
+                using (await lockObj.Write())
+                {
+                    list.Add(counter);
+                    await Task.Delay(rnd.Next(5));
+                    ++counter;
+                }
+            }
+        }
+
+        async Task Reader()
+        {
+            var rnd = new Random();
+            for (var i = 0; i < 100; ++i)
+            {
+                await Task.Yield();
+                using (await lockObj.Read())
+                {
+                    var value = counter;
+                    var count = list.Count;
+                    await Task.Delay(rnd.Next(5));
+                    Assert.AreEqual(value, counter);
+                    Assert.AreEqual(count, list.Count);
+                }
+            }
+        }
     }
 }
