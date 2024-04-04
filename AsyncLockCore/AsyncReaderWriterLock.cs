@@ -16,46 +16,46 @@ public class AsyncReaderWriterLock
     private readonly ContextCallback _execEnterCallback;
     private readonly SendOrPostCallback _syncAndExecEnterCallback;
 
-    private Scope? _incomingQueueFirst;
-    private Scope? _incomingQueueLast;
-    private Scope? _inProgressQueueFirst;
-    private Scope? _inProgressQueueLast;
-    private Scope? _freeStackHead;
+    private Guard? _incomingQueueFirst;
+    private Guard? _incomingQueueLast;
+    private Guard? _inProgressQueueFirst;
+    private Guard? _inProgressQueueLast;
+    private Guard? _freeStackHead;
 
     public AsyncReaderWriterLock()
     {
-        _cancellationCallback = state => TryCancel((Scope)state!);
+        _cancellationCallback = state => TryCancel((Guard)state!);
         _syncEnterCallback = state =>
         {
-            var scope = (Scope)state!;
-            scope.EnterContinuation!(scope.EnterContinuationState);
+            var guard = (Guard)state!;
+            guard.EnterContinuation!(guard.EnterContinuationState);
         };
         _execEnterCallback = state =>
         {
-            var scope = (Scope)state!;
-            scope.EnterContinuation!(scope.EnterContinuationState);
+            var guard = (Guard)state!;
+            guard.EnterContinuation!(guard.EnterContinuationState);
         };
-        _syncAndExecEnterCallback = state => ExecutionContext.Run(((Scope)state!).EnterContinuationExecutionContext!, _execEnterCallback, state);
+        _syncAndExecEnterCallback = state => ExecutionContext.Run(((Guard)state!).EnterContinuationExecutionContext!, _execEnterCallback, state);
     }
 
-    public ValueTask<Scope> Read(CancellationToken cancellationToken = default) => Enter(false, cancellationToken);
-    public ValueTask<Scope> Write(CancellationToken cancellationToken = default) => Enter(true, cancellationToken);
+    public ValueTask<Guard> Read(CancellationToken cancellationToken = default) => Enter(false, cancellationToken);
+    public ValueTask<Guard> Write(CancellationToken cancellationToken = default) => Enter(true, cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ValueTask<Scope> Enter(bool isWrite, CancellationToken cancellationToken)
+    private ValueTask<Guard> Enter(bool isWrite, CancellationToken cancellationToken)
     {
         return cancellationToken.IsCancellationRequested
-            ? new ValueTask<Scope>(Task.FromCanceled<Scope>(cancellationToken))
-            : TryEnter(isWrite, cancellationToken, out var scope)
-                ? new ValueTask<Scope>(scope)
-                : new ValueTask<Scope>(scope, 0);
+            ? new ValueTask<Guard>(Task.FromCanceled<Guard>(cancellationToken))
+            : TryEnter(isWrite, cancellationToken, out var guard)
+                ? new ValueTask<Guard>(guard)
+                : new ValueTask<Guard>(guard, 0);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryEnter(bool isWrite, CancellationToken cancellationToken, out Scope scope)
+    private bool TryEnter(bool isWrite, CancellationToken cancellationToken, out Guard guard)
     {
-        scope = StackTryPopLockFree(ref _freeStackHead) ?? new Scope(this);
-        scope.IsWrite = isWrite;
+        guard = StackTryPopLockFree(ref _freeStackHead) ?? new Guard(this);
+        guard.IsWrite = isWrite;
 
         bool locked = false;
         try
@@ -65,14 +65,14 @@ public class AsyncReaderWriterLock
             var isEntered = _incomingQueueFirst is null && (_inProgressQueueLast is null || !isWrite && !_inProgressQueueLast.IsWrite);
             var canBeCanceled = !isEntered && cancellationToken.CanBeCanceled;
 
-            scope.Status = isEntered ? ValueTaskSourceStatus.Succeeded : ValueTaskSourceStatus.Pending;
-            scope.CanBeCanceled = canBeCanceled;
-            scope.CancellationRegistration = canBeCanceled ? cancellationToken.Register(_cancellationCallback, scope) : default;
+            guard.Status = isEntered ? ValueTaskSourceStatus.Succeeded : ValueTaskSourceStatus.Pending;
+            guard.CanBeCanceled = canBeCanceled;
+            guard.CancellationRegistration = canBeCanceled ? cancellationToken.Register(_cancellationCallback, guard) : default;
 
             if (isEntered)
-                QueueAddLast(ref _inProgressQueueFirst, ref _inProgressQueueLast, scope);
+                QueueAddLast(ref _inProgressQueueFirst, ref _inProgressQueueLast, guard);
             else
-                QueueAddLast(ref _incomingQueueFirst, ref _incomingQueueLast, scope);
+                QueueAddLast(ref _incomingQueueFirst, ref _incomingQueueLast, guard);
             return isEntered;
         }
         finally
@@ -83,14 +83,14 @@ public class AsyncReaderWriterLock
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Exit(Scope scope)
+    private void Exit(Guard guard)
     {
         bool locked = false;
         try
         {
             _lock.Enter(ref locked);
 
-            QueueRemove(ref _inProgressQueueFirst, ref _inProgressQueueLast, scope);
+            QueueRemove(ref _inProgressQueueFirst, ref _inProgressQueueLast, guard);
         }
         finally
         {
@@ -100,18 +100,18 @@ public class AsyncReaderWriterLock
 
         Update();
 
-        scope.EnterContinuation = null;
-        scope.EnterContinuationState = null;
-        scope.EnterContinuationExecutionContext = null;
-        scope.EnterContinuationSynchronizationContext = null;
-        StackPushLockFree(ref _freeStackHead, scope);
+        guard.EnterContinuation = null;
+        guard.EnterContinuationState = null;
+        guard.EnterContinuationExecutionContext = null;
+        guard.EnterContinuationSynchronizationContext = null;
+        StackPushLockFree(ref _freeStackHead, guard);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void TryCancel(Scope scope)
+    private void TryCancel(Guard guard)
     {
         // Status changes only one way so it is safe to ckeck it 1st time outside of the lock
-        if (scope.Status != ValueTaskSourceStatus.Pending)
+        if (guard.Status != ValueTaskSourceStatus.Pending)
             return;
 
         bool locked = false;
@@ -119,11 +119,11 @@ public class AsyncReaderWriterLock
         {
             _lock.Enter(ref locked);
 
-            if (scope.Status != ValueTaskSourceStatus.Pending)
+            if (guard.Status != ValueTaskSourceStatus.Pending)
                 return;
 
-            QueueRemove(ref _incomingQueueFirst, ref _incomingQueueLast, scope);
-            scope.Status = ValueTaskSourceStatus.Canceled;
+            QueueRemove(ref _incomingQueueFirst, ref _incomingQueueLast, guard);
+            guard.Status = ValueTaskSourceStatus.Canceled;
         }
         finally
         {
@@ -134,14 +134,14 @@ public class AsyncReaderWriterLock
         Update();
 
         // It is safe do it otuside of the lock since Status is already "Canceled" and continuation-related fields can't be modified
-        InvokeEnterContinuation(scope);
+        InvokeEnterContinuation(guard);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AttachOnCompleted(Scope scope, Action<object?> continuation, object? state, ValueTaskSourceOnCompletedFlags flags)
+    private void AttachOnCompleted(Guard guard, Action<object?> continuation, object? state, ValueTaskSourceOnCompletedFlags flags)
     {
         // Status changes only one way so it is safe to ckeck it 1st time outside of the lock
-        if (scope.Status == ValueTaskSourceStatus.Pending)
+        if (guard.Status == ValueTaskSourceStatus.Pending)
         {
             // We need to capture these ouside of the lock since they can be expensive
             var executionContext = flags.HasFlag(ValueTaskSourceOnCompletedFlags.FlowExecutionContext) ? ExecutionContext.Capture() : null;
@@ -152,12 +152,12 @@ public class AsyncReaderWriterLock
             {
                 _lock.Enter(ref locked);
 
-                if (scope.Status == ValueTaskSourceStatus.Pending)
+                if (guard.Status == ValueTaskSourceStatus.Pending)
                 {
-                    scope.EnterContinuation = continuation;
-                    scope.EnterContinuationState = state;
-                    scope.EnterContinuationExecutionContext = executionContext;
-                    scope.EnterContinuationSynchronizationContext = synchronizationContext;
+                    guard.EnterContinuation = continuation;
+                    guard.EnterContinuationState = state;
+                    guard.EnterContinuationExecutionContext = executionContext;
+                    guard.EnterContinuationSynchronizationContext = synchronizationContext;
                     return;
                 }
             }
@@ -173,7 +173,7 @@ public class AsyncReaderWriterLock
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool UpdateOnce()
     {
-        Scope scope;
+        Guard guard;
         bool result;
 
         bool locked = false;
@@ -184,13 +184,13 @@ public class AsyncReaderWriterLock
             if (_incomingQueueFirst is null || _inProgressQueueLast is not null && (_inProgressQueueLast.IsWrite || _incomingQueueFirst.IsWrite))
                 return false;
 
-            scope = QueueRemoveFirst(ref _incomingQueueFirst, ref _incomingQueueLast);
-            QueueAddLast(ref _inProgressQueueFirst, ref _inProgressQueueLast, scope);
+            guard = QueueRemoveFirst(ref _incomingQueueFirst, ref _incomingQueueLast);
+            QueueAddLast(ref _inProgressQueueFirst, ref _inProgressQueueLast, guard);
 
-            Debug.Assert(scope.Status == ValueTaskSourceStatus.Pending);
+            Debug.Assert(guard.Status == ValueTaskSourceStatus.Pending);
 
-            scope.Status = ValueTaskSourceStatus.Succeeded;
-            result = !scope.IsWrite && _incomingQueueFirst is { IsWrite: false };
+            guard.Status = ValueTaskSourceStatus.Succeeded;
+            result = !guard.IsWrite && _incomingQueueFirst is { IsWrite: false };
         }
         finally
         {
@@ -199,11 +199,11 @@ public class AsyncReaderWriterLock
         }
 
         // It is safe to do it outside of the lock since Status is already "Succeeded" and these fields can't be modified
-        if (scope.CanBeCanceled)
-            scope.CancellationRegistration.Dispose();
+        if (guard.CanBeCanceled)
+            guard.CancellationRegistration.Dispose();
 
         // It is safe do it otuside of the lock since Status is already "Succeeded" and continuation-related fields can't be modified
-        InvokeEnterContinuation(scope);
+        InvokeEnterContinuation(guard);
 
         return result;
     }
@@ -217,106 +217,106 @@ public class AsyncReaderWriterLock
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void InvokeEnterContinuation(Scope scope)
+    private void InvokeEnterContinuation(Guard guard)
     {
-        if (scope.EnterContinuation is null)
+        if (guard.EnterContinuation is null)
             return;
 
-        var syncContext = scope.EnterContinuationSynchronizationContext;
-        var execContext = scope.EnterContinuationExecutionContext;
+        var syncContext = guard.EnterContinuationSynchronizationContext;
+        var execContext = guard.EnterContinuationExecutionContext;
         if (syncContext is not null && syncContext != SynchronizationContext.Current)
         {
             var callback = execContext is null ? _syncEnterCallback : _syncAndExecEnterCallback;
-            syncContext.Post(callback, scope);
+            syncContext.Post(callback, guard);
         }
         else if (execContext is not null)
-            ExecutionContext.Run(execContext, _execEnterCallback, scope);
+            ExecutionContext.Run(execContext, _execEnterCallback, guard);
         else
-            scope.EnterContinuation!(scope.EnterContinuationState);
+            guard.EnterContinuation!(guard.EnterContinuationState);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void QueueAddLast(ref Scope? first, ref Scope? last, Scope scope)
+    private static void QueueAddLast(ref Guard? first, ref Guard? last, Guard guard)
     {
         if (last is null)
-            first = scope;
+            first = guard;
         else
         {
-            scope.Previous = last;
-            last.Next = scope;
+            guard.Previous = last;
+            last.Next = guard;
         }
-        last = scope;
+        last = guard;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void QueueRemove(ref Scope? first, ref Scope? last, Scope scope)
+    private static void QueueRemove(ref Guard? first, ref Guard? last, Guard guard)
     {
-        var previous = scope.Previous;
+        var previous = guard.Previous;
         if (previous is null)
-            first = scope.Next;
+            first = guard.Next;
         else
-            previous.Next = scope.Next;
+            previous.Next = guard.Next;
 
-        var next = scope.Next;
+        var next = guard.Next;
         if (next is null)
-            last = scope.Previous;
+            last = guard.Previous;
         else
-            next.Previous = scope.Previous;
+            next.Previous = guard.Previous;
 
-        scope.Next = null;
-        scope.Previous = null;
+        guard.Next = null;
+        guard.Previous = null;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Scope QueueRemoveFirst(ref Scope? first, ref Scope? last)
+    private static Guard QueueRemoveFirst(ref Guard? first, ref Guard? last)
     {
         Debug.Assert(first is not null);
-        var scope = first!;
-        first = scope.Next;
+        var guard = first!;
+        first = guard.Next;
         if (first is null)
             last = null;
         else
             first.Previous = null;
 
-        scope.Next = null;
-        return scope;
+        guard.Next = null;
+        return guard;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void StackPushLockFree(ref Scope? head, Scope scope)
+    private static void StackPushLockFree(ref Guard? head, Guard guard)
     {
-        Scope? oldHead;
+        Guard? oldHead;
         do
         {
             oldHead = head;
-            scope.Next = oldHead;
+            guard.Next = oldHead;
         }
-        while (Interlocked.CompareExchange(ref head, scope, oldHead) != oldHead);
+        while (Interlocked.CompareExchange(ref head, guard, oldHead) != oldHead);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Scope? StackTryPopLockFree(ref Scope? head)
+    private static Guard? StackTryPopLockFree(ref Guard? head)
     {
-        Scope? scope;
-        Scope? newHead;
+        Guard? guard;
+        Guard? newHead;
         do
         {
-            scope = head;
-            if (scope is null)
+            guard = head;
+            if (guard is null)
                 return null;
-            newHead = scope.Next;
+            newHead = guard.Next;
         }
-        while (Interlocked.CompareExchange(ref head, newHead, scope) != scope);
-        scope.Next = null;
-        return scope;
+        while (Interlocked.CompareExchange(ref head, newHead, guard) != guard);
+        guard.Next = null;
+        return guard;
     }
 
-    public sealed class Scope : IDisposable, IValueTaskSource<Scope>
+    public sealed class Guard : IDisposable, IValueTaskSource<Guard>
     {
         private readonly AsyncReaderWriterLock _owner;
 
-        internal Scope? Next;
-        internal Scope? Previous;
+        internal Guard? Next;
+        internal Guard? Previous;
         internal bool IsWrite;
         internal volatile ValueTaskSourceStatus Status;
         internal bool CanBeCanceled;
@@ -327,11 +327,11 @@ public class AsyncReaderWriterLock
         internal SynchronizationContext? EnterContinuationSynchronizationContext;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Scope(AsyncReaderWriterLock owner) => _owner = owner;
+        internal Guard(AsyncReaderWriterLock owner) => _owner = owner;
 
         public void Dispose() => _owner.Exit(this);
 
-        Scope IValueTaskSource<Scope>.GetResult(short token)
+        Guard IValueTaskSource<Guard>.GetResult(short token)
         {
             return Status switch
             {
@@ -341,8 +341,8 @@ public class AsyncReaderWriterLock
             };
         }
 
-        ValueTaskSourceStatus IValueTaskSource<Scope>.GetStatus(short token) => Status;
+        ValueTaskSourceStatus IValueTaskSource<Guard>.GetStatus(short token) => Status;
 
-        void IValueTaskSource<Scope>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _owner.AttachOnCompleted(this, continuation, state, flags);
+        void IValueTaskSource<Guard>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _owner.AttachOnCompleted(this, continuation, state, flags);
     }
 }

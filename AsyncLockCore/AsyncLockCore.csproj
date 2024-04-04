@@ -2,7 +2,7 @@
   <Import Project="../AsyncLockCore.targets" />
   <PropertyGroup>
     <TargetFrameworks>$(TargetFrameworks);netstandard2.0</TargetFrameworks>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <PackageVersion>$(Version)$(VersionSuffix)</PackageVersion>
     <Authors>Vasyl Novikov</Authors>
     <Description>Asynchronous read-write lock for .NET</Description>

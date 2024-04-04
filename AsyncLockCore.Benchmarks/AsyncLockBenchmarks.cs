@@ -10,19 +10,19 @@ public class AsyncLockBenchmarks
 {
     private readonly AsyncReaderWriterLock _readWriterLock = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private readonly WaitCallback _disposeScope = state => ((AsyncReaderWriterLock.Scope)state!).Dispose();
+    private readonly WaitCallback _disposeGuard = state => ((AsyncReaderWriterLock.Guard)state!).Dispose();
     private readonly WaitCallback _releaseSemaphore = state => ((SemaphoreSlim)state!).Release();
 
     [Benchmark]
     public async Task AsyncReadWriterLock_Read()
     {
-        using var scope = await _readWriterLock.Read().ConfigureAwait(false);
+        using var guard = await _readWriterLock.Read().ConfigureAwait(false);
     }
 
     [Benchmark]
     public async Task AsyncReadWriterLock_Write()
     {
-        using var scope = await _readWriterLock.Write().ConfigureAwait(false);
+        using var guard = await _readWriterLock.Write().ConfigureAwait(false);
     }
 
     [Benchmark]
@@ -36,19 +36,19 @@ public class AsyncLockBenchmarks
     [Benchmark]
     public async Task AsyncReadWriterLock_Wait_Read()
     {
-        var writeScope = await _readWriterLock.Write().ConfigureAwait(false);
+        var writeGuard = await _readWriterLock.Write().ConfigureAwait(false);
         var readTask = _readWriterLock.Read();
-        writeScope.Dispose();
-        using var scope = await readTask.ConfigureAwait(false);
+        writeGuard.Dispose();
+        using var guard = await readTask.ConfigureAwait(false);
     }
 
     [Benchmark]
     public async Task AsyncReadWriterLock_Wait_Write()
     {
-        var readScope = await _readWriterLock.Read().ConfigureAwait(false);
+        var readGuard = await _readWriterLock.Read().ConfigureAwait(false);
         var writeTask = _readWriterLock.Write();
-        readScope.Dispose();
-        using var scope = await writeTask.ConfigureAwait(false);
+        readGuard.Dispose();
+        using var guard = await writeTask.ConfigureAwait(false);
     }
 
     [Benchmark]
@@ -64,19 +64,19 @@ public class AsyncLockBenchmarks
     [Benchmark]
     public async Task AsyncReadWriterLock_Wait_Read_Async()
     {
-        var writeScope = await _readWriterLock.Write().ConfigureAwait(false);
+        var writeGuard = await _readWriterLock.Write().ConfigureAwait(false);
         var readTask = _readWriterLock.Read();
-        ThreadPool.QueueUserWorkItem(_disposeScope, writeScope);
-        using var scope = await readTask.ConfigureAwait(false);
+        ThreadPool.QueueUserWorkItem(_disposeGuard, writeGuard);
+        using var guard = await readTask.ConfigureAwait(false);
     }
 
     [Benchmark]
     public async Task AsyncReadWriterLock_Wait_Write_Async()
     {
-        var readScope = await _readWriterLock.Read().ConfigureAwait(false);
+        var readGuard = await _readWriterLock.Read().ConfigureAwait(false);
         var writeTask = _readWriterLock.Write();
-        ThreadPool.QueueUserWorkItem(_disposeScope, readScope);
-        using var scope = await writeTask.ConfigureAwait(false);
+        ThreadPool.QueueUserWorkItem(_disposeGuard, readGuard);
+        using var guard = await writeTask.ConfigureAwait(false);
     }
 
     [Benchmark]
