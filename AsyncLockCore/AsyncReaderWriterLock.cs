@@ -33,13 +33,14 @@ public sealed class AsyncReaderWriterLock
 
     private SpinLock _lock = new(false);
 
+    private Guard? _freeStackHead;
     private Guard? _incomingQueueFirst;
     private Guard? _incomingQueueLast;
-    private Guard? _inProgressQueueFirst;
-    private Guard? _inProgressQueueLast;
-    private Guard? _freeStackHead;
+    private int _inProgressCount;
+    private bool _isInProgressWrite;
 
     public ValueTask<Guard> Read(CancellationToken cancellationToken = default) => Enter(false, cancellationToken);
+
     public ValueTask<Guard> Write(CancellationToken cancellationToken = default) => Enter(true, cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -58,12 +59,12 @@ public sealed class AsyncReaderWriterLock
         guard = StackTryPopLockFree(ref _freeStackHead) ?? new Guard(this);
         guard.IsWrite = isWrite;
 
-        bool locked = false;
+        var locked = false;
         try
         {
             _lock.Enter(ref locked);
 
-            var isEntered = _incomingQueueFirst is null && (_inProgressQueueLast is null || !isWrite && !_inProgressQueueLast.IsWrite);
+            var isEntered = _incomingQueueFirst is null && (_inProgressCount == 0 || !isWrite && !_isInProgressWrite);
             var canBeCanceled = !isEntered && cancellationToken.CanBeCanceled;
 
             guard.Status = isEntered ? ValueTaskSourceStatus.Succeeded : ValueTaskSourceStatus.Pending;
@@ -71,7 +72,10 @@ public sealed class AsyncReaderWriterLock
             guard.CancellationRegistration = canBeCanceled ? cancellationToken.Register(CancellationCallback, guard) : default;
 
             if (isEntered)
-                QueueAddLast(ref _inProgressQueueFirst, ref _inProgressQueueLast, guard);
+            {
+                ++_inProgressCount;
+                _isInProgressWrite = isWrite;
+            }
             else
                 QueueAddLast(ref _incomingQueueFirst, ref _incomingQueueLast, guard);
             return isEntered;
@@ -86,12 +90,12 @@ public sealed class AsyncReaderWriterLock
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Exit(Guard guard)
     {
-        bool locked = false;
+        var locked = false;
         try
         {
             _lock.Enter(ref locked);
 
-            QueueRemove(ref _inProgressQueueFirst, ref _inProgressQueueLast, guard);
+            --_inProgressCount;
         }
         finally
         {
@@ -111,11 +115,11 @@ public sealed class AsyncReaderWriterLock
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void TryCancel(Guard guard)
     {
-        // Status changes only one way so it is safe to ckeck it 1st time outside of the lock
+        // Status changes only one way so it is safe to check it 1st time outside of the lock
         if (guard.Status != ValueTaskSourceStatus.Pending)
             return;
 
-        bool locked = false;
+        var locked = false;
         try
         {
             _lock.Enter(ref locked);
@@ -141,14 +145,14 @@ public sealed class AsyncReaderWriterLock
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AttachOnCompleted(Guard guard, Action<object?> continuation, object? state, ValueTaskSourceOnCompletedFlags flags)
     {
-        // Status changes only one way so it is safe to ckeck it 1st time outside of the lock
+        // Status changes only one way so it is safe to check it 1st time outside of the lock
         if (guard.Status == ValueTaskSourceStatus.Pending)
         {
-            // We need to capture these ouside of the lock since they can be expensive
+            // We need to capture these outside of the lock since they can be expensive
             var executionContext = flags.HasFlag(ValueTaskSourceOnCompletedFlags.FlowExecutionContext) ? ExecutionContext.Capture() : null;
             var synchronizationContext = flags.HasFlag(ValueTaskSourceOnCompletedFlags.UseSchedulingContext) ? SynchronizationContext.Current : null;
 
-            bool locked = false;
+            var locked = false;
             try
             {
                 _lock.Enter(ref locked);
@@ -177,21 +181,22 @@ public sealed class AsyncReaderWriterLock
         Guard guard;
         bool result;
 
-        bool locked = false;
+        var locked = false;
         try
         {
             _lock.Enter(ref locked);
 
-            if (_incomingQueueFirst is null || _inProgressQueueLast is not null && (_inProgressQueueLast.IsWrite || _incomingQueueFirst.IsWrite))
+            if (_incomingQueueFirst is null || _inProgressCount != 0 && (_isInProgressWrite || _incomingQueueFirst.IsWrite))
                 return false;
 
             guard = QueueRemoveFirst(ref _incomingQueueFirst, ref _incomingQueueLast);
-            QueueAddLast(ref _inProgressQueueFirst, ref _inProgressQueueLast, guard);
+            ++_inProgressCount;
+            _isInProgressWrite = guard.IsWrite;
 
             Debug.Assert(guard.Status == ValueTaskSourceStatus.Pending);
 
             guard.Status = ValueTaskSourceStatus.Succeeded;
-            result = !guard.IsWrite && _incomingQueueFirst is { IsWrite: false };
+            result = !_isInProgressWrite && _incomingQueueFirst is { IsWrite: false };
         }
         finally
         {
