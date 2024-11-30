@@ -39,8 +39,10 @@ public sealed class AsyncReaderWriterLock
     private int _inProgressCount;
     private bool _isInProgressWrite;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<Guard> Read(CancellationToken cancellationToken = default) => Enter(false, cancellationToken);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<Guard> Write(CancellationToken cancellationToken = default) => Enter(true, cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -335,6 +337,7 @@ public sealed class AsyncReaderWriterLock
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Guard(AsyncReaderWriterLock owner) => Owner = owner;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Dispose() => Owner.Exit(this);
 
         Guard IValueTaskSource<Guard>.GetResult(short token)

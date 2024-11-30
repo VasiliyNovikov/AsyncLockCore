@@ -132,19 +132,19 @@ public class AsyncReaderWriterLockTests
     public async Task Async_Lock_Parallel_Read_Write()
     {
         var lockObj = new AsyncReaderWriterLock();
-        
+
         var counter = 0;
         var list = new List<int>();
-        
+
         var parallelOperationCount = Environment.ProcessorCount * 2;
-        
+
         var tasks = new List<Task>();
         for (var i = 0; i < parallelOperationCount; ++i)
         {
             tasks.Add(Writer());
             tasks.Add(Reader());
         }
-        
+
         await Task.WhenAll(tasks);
 
         for (var i = 0; i < list.Count - 1; ++i)

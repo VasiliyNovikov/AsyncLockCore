@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../AsyncLockCore.targets" />
   <PropertyGroup>
+    <TargetFrameworks>$(TargetFrameworks);net6.0</TargetFrameworks>
     <TargetFrameworks Condition="'$(OS)' == 'Windows_NT'">$(TargetFrameworks);net481</TargetFrameworks>
   </PropertyGroup>  
   <ItemGroup>
