@@ -4,7 +4,7 @@
     <TargetFrameworks>$(TargetFrameworks);netstandard2.0</TargetFrameworks>
     <IsAotCompatible Condition="'$(TargetFramework)' == 'net8.0'">true</IsAotCompatible>
     <IsAotCompatible Condition="'$(TargetFramework)' == 'net9.0'">true</IsAotCompatible>
-    <Version>0.1.5</Version>
+    <Version>0.1.6</Version>
     <PackageVersion>$(Version)$(VersionSuffix)</PackageVersion>
     <Authors>Vasyl Novikov</Authors>
     <Description>Asynchronous read-write lock for .NET</Description>

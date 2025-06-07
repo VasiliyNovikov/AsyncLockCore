@@ -4,9 +4,10 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
-    <PackageVersion Include="DotNext.Threading" Version="5.15.0" />
-    <PackageVersion Include="MSTest" Version="3.6.3" />
-    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.6.0" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.0" />
+    <PackageVersion Include="DotNext.Threading" Version="5.22.0" />
+    <PackageVersion Include="MSTest" Version="3.9.1" />
+    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
+    <PackageVersion Include="System.Reflection.Metadata" Version="9.0.5" />
   </ItemGroup>
 </Project>
