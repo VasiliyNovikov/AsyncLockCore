@@ -1,51 +1,23 @@
-#:property LangVersion preview
+#:package NuGet.Versioning
 
 using System.Text.Json;
 using System.Xml;
+using NuGet.Versioning;
 
-Console.WriteLine("Assigning package version...");
+const string projectName = "AsyncLockCore";
 
-Uri uri = new("https://api.nuget.org/v3-flatcontainer/asynclockcore/index.json");
+XmlDocument doc = new();
+doc.Load(Path.Combine(projectName, $"{projectName}.csproj"));
+var baseVersion = SemanticVersion.Parse(doc.SelectSingleNode("//Version")!.InnerText);
 
 using HttpClient client = new();
-string json = await client.GetStringAsync(uri);
+var versionsJson = await client.GetStringAsync($"https://api.nuget.org/v3-flatcontainer/{projectName.ToLowerInvariant()}/index.json");
+var versions = JsonSerializer.Deserialize<NuGetVersions>(versionsJson)!.versions.Select(v => SemanticVersion.Parse(v));
 
-var versions = JsonSerializer.Deserialize<NuGetVersions>(json)!.versions;
-Console.WriteLine($"Found versions:");
-foreach (var version in versions)
-    Console.WriteLine($"  {version}");
+int[] patches = [.. from v in versions where v.Major == baseVersion.Major && v.Minor == baseVersion.Minor select v.Patch];
+var newPatch = patches.Any() ? patches.Max() + 1 : 0;
+var newVersion = new SemanticVersion(baseVersion.Major, baseVersion.Minor, newPatch);
 
-string projectPath = Path.Combine("AsyncLockCore", "AsyncLockCore.csproj");
-XmlDocument doc = new();
-doc.Load(projectPath);
-
-var versionNode = doc.SelectSingleNode("//Version");
-if (versionNode == null)
-{
-    Console.WriteLine("Version node not found in project file");
-    return;
-}
-
-string currentVersion = versionNode.InnerText;
-Console.WriteLine($"Current version: {currentVersion}");
-
-var versionParts = currentVersion.Split('.');
-string major = versionParts[0];
-string minor = versionParts[1];
-
-Console.WriteLine($"Major: {major}, Minor: {minor}");
-
-var latestPach = versions.Where(v => v.StartsWith($"{major}.{minor}."))
-                         .Select(v => 
-                         {
-                             var parts = v.Split('.');
-                             return parts.Length >= 3 && int.TryParse(parts[2], out int patch) ? patch : 0;
-                         })
-                         .Max();
-int newPatch = latestPach + 1;
-string newVersion = $"{major}.{minor}.{newPatch}";
-
-Console.WriteLine($"Latest patch on NuGet: {latestPach}");
 Console.WriteLine($"New version: {newVersion}");
 
 record NuGetVersions(string[] versions);
