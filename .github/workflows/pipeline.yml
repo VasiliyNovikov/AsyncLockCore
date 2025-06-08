@@ -61,7 +61,9 @@ jobs:
 
       - name: Package Version
         id: package_version
-        run: dotnet run ./.github/workflows/package_version.cs >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(dotnet run ./.github/workflows/package_version.cs)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Pack
         run: dotnet pack ./AsyncLockCore/AsyncLockCore.csproj -c Release --no-build -p:Version=${{ steps.package_version.outputs.version }}
