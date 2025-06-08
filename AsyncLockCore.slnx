@@ -1,8 +1,8 @@
 <Solution>
   <Folder Name="/.github/" />
   <Folder Name="/.github/workflows/">
+    <File Path=".github/workflows/package_version.cs" />
     <File Path=".github/workflows/pipeline.yml" />
-    <File Path=".github/workflows/pack.cs" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />

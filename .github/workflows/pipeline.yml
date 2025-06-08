@@ -59,9 +59,12 @@ jobs:
       - name: Build
         run: dotnet build -c Release
 
+      - name: Package Version
+        id: package_version
+        run: dotnet run ./.github/workflows/package_version.cs >> "$GITHUB_OUTPUT"
+
       - name: Pack
-        # run: dotnet pack ./AsyncLockCore/AsyncLockCore.csproj -c Release --no-build --version-suffix "${{ fromJSON(format('["-beta-{0}", ""]', github.run_number))[github.ref_name == 'master'] }}"
-        run: dotnet run ./.github/workflows/pack.cs
+        run: dotnet pack ./AsyncLockCore/AsyncLockCore.csproj -c Release --no-build -p:Version=${{ steps.package_version.outputs.version }}
 
       #- name: Push
       #  run: dotnet nuget push **/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate

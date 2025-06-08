@@ -24,6 +24,6 @@ var newRelease = githubRefName == "master" ? "" : $"beta-{githubRunId}";
 
 var newVersion = new SemanticVersion(baseVersion.Major, baseVersion.Minor, newPatch, newRelease);
 
-Console.WriteLine($"New version: {newVersion}");
+Console.WriteLine(newVersion);
 
 record NuGetVersions(string[] versions);
