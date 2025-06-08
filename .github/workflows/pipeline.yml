@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - master
+
 jobs:
   validate:
     strategy:
@@ -41,9 +42,9 @@ jobs:
         if: ${{ always() }}
 
   publish:
-    # if: ${{ success() && (vars.PUBLISH == 'true' || vars.PUBLISH == 'auto' && github.ref_name == 'master') }}
-    #needs:
-    #  - validate
+    if: ${{ success() && (vars.PUBLISH == 'true' || vars.PUBLISH == 'auto' && github.ref_name == 'master') }}
+    needs:
+      - validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,5 +69,5 @@ jobs:
       - name: Pack
         run: dotnet pack ./AsyncLockCore/AsyncLockCore.csproj -c Release --no-build -p:Version=${{ steps.package_version.outputs.version }}
 
-      #- name: Push
-      #  run: dotnet nuget push **/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
+      - name: Push
+        run: dotnet nuget push **/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
