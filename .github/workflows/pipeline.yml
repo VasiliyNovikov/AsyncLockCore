@@ -59,9 +59,6 @@ jobs:
       - name: Build
         run: dotnet build -c Release
 
-      - name: Env
-        run: env
-
       - name: Pack
         # run: dotnet pack ./AsyncLockCore/AsyncLockCore.csproj -c Release --no-build --version-suffix "${{ fromJSON(format('["-beta-{0}", ""]', github.run_number))[github.ref_name == 'master'] }}"
         run: dotnet run ./.github/workflows/pack.cs
